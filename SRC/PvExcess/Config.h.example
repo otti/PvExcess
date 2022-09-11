@@ -1,0 +1,26 @@
+// ---------------------------------------------------------------
+// Build configuration area start
+// ---------------------------------------------------------------
+
+// Setting this define to 1 will enable a web page (<ip>/debug) where debug messages can be displayed
+#define ENABLE_WEB_DEBUG 0
+
+// Data of the Wifi access point
+// Default IP 192.168.4.1
+// Hold down the Button for a few seconds to enter Access Point mode
+#define HOSTNAME          "PvExcess"
+#define APPassword        "PvExcess"
+
+// Username and password for firmware update
+#define UPDATE_USER       "admin"
+#define UPDATE_PASSWORD   "admin"
+
+#define AP_BUTTON_PRESSED ( digitalRead(35) == LOW )
+
+#define BUTTON_TIMER 500 //  0.5s default
+
+#define PERMANENT_OUTPUT 21          // This output will stay high permanent after the threshold power is reached
+#define TRIGGER_OUTPUT   22          // This output will be high for 500 ms after the threshold power is reached
+
+#define EXCESS_POWER_TO_START 1100   // Power in W needed by the device
+#define START_APPLIANCES_TIME (5*60) // Start after this time with at least EXCESS_POWER_TO_START from your PC installation
