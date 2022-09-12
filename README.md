@@ -26,7 +26,7 @@ Implemented Features:
 * Wifi manager with own access point for initial configuration of Wifi and MQTT server (IP: 192.168.4.1, SSID: PvExcess, Pass: PvExcess)
 
 ## Supported devices
-* LILYO TTGO T-Display ESP32 1.14 Inch (240x135 pixel)
+* LILYGO TTGO T-Display ESP32 1.14 Inch (240x135 pixel)
 
 
 ## JSON Format Data
