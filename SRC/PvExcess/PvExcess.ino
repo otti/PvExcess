@@ -1,3 +1,4 @@
+
 /*
 
 Used Libs
@@ -15,66 +16,65 @@ or download them from github (Sketch -> Include Library -> Add .ZIP Library)
 */
 
 #include <Arduino.h>
-#include "config.h"
-
+#include <WiFi.h>
+#include <WebServer.h>
+#include <Arduino_JSON.h>
+#include <PubSubClient.h>
+#include <WiFiManager.h>
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <ESPHTTPUpdateServer.h>
+#include <SPI.h>
 
+#include "LittleFS.h"
+#include "config.h"
+#include "index.h"
+#include "images.h"
+
+#define BUTTON_TOP     35 // Active Low; Located next to the reset button
+#define BUTTON_BOTTOM  0  // Active Low; Also used as GPIO0
+
+#define TFT_MOSI       19
+#define TFT_SCLK       18
+#define TFT_CS         5
+#define TFT_DC         16
+#define TFT_BL         4 // Backlight
+
+#define BG_COLOR       ST77XX_BLACK
+
+#define MQTT_TIMEOUT_THRESHOLD         60     // 60 seconds
+
+#define FORMAT_LITTLEFS_IF_FAILED      true
+
+#define CONFIG_PORTAL_MAX_TIME_SECONDS 300
 
 #if ENABLE_WEB_DEBUG == 1
 char acWebDebug[1024] = "";
 uint16_t u16WebMsgNo = 0;
 #define WEB_DEBUG_PRINT(s) {if( (strlen(acWebDebug)+strlen(s)+50) < sizeof(acWebDebug) ) sprintf(acWebDebug, "%s#%i: %s\n", acWebDebug, u16WebMsgNo++, s);}
 #else
+#undef WEB_DEBUG_PRINT
 #define WEB_DEBUG_PRINT(s) ;
 #endif
 
-// ---------------------------------------------------------------
-// User configuration area end
-// ---------------------------------------------------------------
+typedef enum
+{
+  PVE_STATE_INIT,
+  PVE_STATE_NO_WIFI,
+  PVE_STATE_NO_MQTT,
+  PVE_STATE_WAIT_FOR_USER,
+  PVE_STATE_WAIT_FOR_EXCESS_POWER,
+  PVE_STATE_WAIT_FOR_CONSTANT_EXCESS_POWER,
+  PVE_STATE_RUNNING
+}ePVE_STATE_t;
 
-#include "LittleFS.h"
-
-#include <WiFi.h>
-#include <WebServer.h>
-#include <Arduino_JSON.h>
-
-#include <PubSubClient.h>
-
-bool StartedConfigAfterBoot = false;
-#define CONFIG_PORTAL_MAX_TIME_SECONDS 300
-#include <WiFiManager.h>
-#include "index.h"
-
-#include <Adafruit_GFX.h>    // Core graphics library
-#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
-#include <SPI.h>
-
-#define BUTTON_TOP    35 // Active Lo
-#define BUTTON_BOTTOM 0  // Active Lo; also used as GPIO0
-
-#define TFT_MOSI 19
-#define TFT_SCLK 18
-#define TFT_CS    5
-#define TFT_DC   16
-#define TFT_BL    4 // Backlight
-
-#define BG_COLOR ST77XX_BLACK
-
-#define MQTT_TIMEOUT_THRESHOLD 60     // 60 seconds
-
-#define FORMAT_LITTLEFS_IF_FAILED true
-
-
-WiFiClient   espClient;
-
-PubSubClient MqttClient(espClient);
-WebServer httpServer(80);
-
+WiFiClient          espClient;
+PubSubClient        MqttClient(espClient);
+WebServer           httpServer(80);
 ESPHTTPUpdateServer httpUpdater;
+Adafruit_ST7789     tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK); // ST7789 240x135
+WiFiManager         wm;
 
-Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK); // ST7789 240x135
-
-WiFiManager wm;
 WiFiManagerParameter* custom_mqtt_server     = NULL;
 WiFiManagerParameter* custom_mqtt_port       = NULL;
 WiFiManagerParameter* custom_mqtt_topic      = NULL;
@@ -96,21 +96,45 @@ String mqttjsonentry  = "";
 String mqttuser       = "";
 String mqttpwd        = "";
 
-uint16_t u16MqttUpdateTimeout = 0xFFFF;
-bool     bMqttTimeout = true;
-long     previousConnectTryMillis = 0;
-int32_t  i32ElectricalPower = 0;
-byte     btnPressed = 0;
-const char* update_path    = "/firmware";
+uint16_t     u16MqttUpdateTimeout     = 0xFFFF;
+int32_t      i32ElectricalPower       = 0;
+bool         bMqttTimeout             = true;
+long         previousConnectTryMillis = 0;
+uint8_t      u8BtnPressCnt            = 0;
+bool         StartedConfigAfterBoot   = false;
+bool         bUserButtonPressed       = false;
+const char*  update_path              = "/firmware";
 
+uint16_t     u16StartTimer            = START_APPLIANCES_TIME;
+long         ButtonTimer              = 0;
+long         _1sTimer                 = 0;
+bool         bUserButtonOld           = false;
+ePVE_STATE_t PveState;
+File         this_file;
 
-bool bUserButtonPressed = false;
-
-#include "images.h"
-
+void   loop(void);
+void   setup(void);
+String getId(void);
+void   MainPage(void);
 void   StartTrigger(void);
+bool   MqttReconnect(void);
+void   WiFi_Reconnect(void);
+void   saveParamCallback(void);
+void   DrawPower(int32_t Power);
 void   ResetTriggerOutputs(void);
-String getId();
+void   DrawStartLogic(int32_t Power);
+void   ExtendString(String *Str, uint8_t n);
+void   TftPrintStatus(String Line1, String Line2);
+bool   write_to_file(const char* file_name, String contents);
+void   ConvertPowerToHumanReadable(int32_t i32Power, char *Str);
+void   ConvertSecondsToHumanReadable(uint16_t Seconds, char *Str);
+String load_from_file(const char* file_name, String defaultvalue) ;
+void   MqttSubCallback(char* topic, byte* payload, unsigned int length);
+
+#if ENABLE_WEB_DEBUG == 1
+void SendDebug(void)
+#endif
+
 
 // -------------------------------------------------------
 // Check the WiFi status and reconnect if necessary
@@ -141,6 +165,9 @@ void WiFi_Reconnect()
 }
 
 
+// -------------------------------------------------------
+// Will be called if an message with our topic has been received
+// -------------------------------------------------------
 void MqttSubCallback(char* topic, byte* payload, unsigned int length)
 {
   JSONVar Obj;
@@ -160,7 +187,6 @@ void MqttSubCallback(char* topic, byte* payload, unsigned int length)
 // -------------------------------------------------------
 // Check the Mqtt status and reconnect if necessary
 // -------------------------------------------------------
-
 bool MqttReconnect()
 {
     if (mqttserver.length() == 0)
@@ -209,7 +235,7 @@ bool MqttReconnect()
     return false;
 }
 
-File this_file;
+
 
 String load_from_file(const char* file_name, String defaultvalue) 
 {
@@ -356,21 +382,6 @@ void TftPrintStatus(String Line1, String Line2)
   tft.setCursor(0, 120);
   tft.print(Line2);
 }
-
-uint16_t u16StartTimer = START_APPLIANCES_TIME;
-
-typedef enum
-{
-  PVE_STATE_INIT,
-  PVE_STATE_NO_WIFI,
-  PVE_STATE_NO_MQTT,
-  PVE_STATE_WAIT_FOR_USER,
-  PVE_STATE_WAIT_FOR_EXCESS_POWER,
-  PVE_STATE_WAIT_FOR_CONSTANT_EXCESS_POWER,
-  PVE_STATE_RUNNING
-}ePVE_STATE_t;
-
-ePVE_STATE_t PveState;
 
 // call every second
 void DrawStartLogic(int32_t Power)
@@ -596,10 +607,6 @@ void MainPage(void)
 // -------------------------------------------------------
 // Main loop
 // -------------------------------------------------------
-long ButtonTimer = 0;
-long _1sTimer = 0;
-bool bUserButtonOld = false;
-
 void loop()
 {
   bool bUserButton;
@@ -642,7 +649,7 @@ void loop()
 
         if( AP_BUTTON_PRESSED )
         {
-            if (btnPressed > 5)
+            if (u8BtnPressCnt > 5)
             {
     
                 Serial.println("Start AP");
@@ -650,13 +657,13 @@ void loop()
             }
             else
             {
-                btnPressed++;
+                u8BtnPressCnt++;
             }
             Serial.print("AP button pressed");
         }
         else
         {
-            btnPressed = 0;
+            u8BtnPressCnt = 0;
         }
     }
 
