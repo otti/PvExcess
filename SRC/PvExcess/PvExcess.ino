@@ -6,15 +6,16 @@ Used Libs
   - ArduinoJson           by Benoit Blanchon https://github.com/bblanchon/ArduinoJson
   - ESPHTTPUpdateServerby by Tobias Faust    https://github.com/tobiasfaust/ESPHTTPUpdateServer
   - LITTLEFS              by lorol           https://github.com/lorol/LITTLEFS
-  - Adafruit ST7735 and ST7789 Library by Adafruit7
+  - Adafruit_GFX          by Adafruit        https://github.com/adafruit/Adafruit-GFX-Library
+  - Adafruit_ST7789       by Adafruit        https://github.com/adafruit/Adafruit-ST7735-Library
 
 To install the used libraries, use the embedded library manager (Sketch -> Include Library -> Manage Libraries),
 or download them from github (Sketch -> Include Library -> Add .ZIP Library)
 
 */
 
+#include <Arduino.h>
 #include "config.h"
-#include "index.h"
 
 #include <ESPHTTPUpdateServer.h>
 
@@ -31,8 +32,7 @@ uint16_t u16WebMsgNo = 0;
 // User configuration area end
 // ---------------------------------------------------------------
 
-#include "FS.h"
-#include <LITTLEFS.h>
+#include "LittleFS.h"
 
 #include <WiFi.h>
 #include <WebServer.h>
@@ -43,6 +43,7 @@ uint16_t u16WebMsgNo = 0;
 bool StartedConfigAfterBoot = false;
 #define CONFIG_PORTAL_MAX_TIME_SECONDS 300
 #include <WiFiManager.h>
+#include "index.h"
 
 #include <Adafruit_GFX.h>    // Core graphics library
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
@@ -63,19 +64,10 @@ bool StartedConfigAfterBoot = false;
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 
-byte btnPressed = 0;
-
-const char* update_path    = "/firmware";
-int32_t i32ElectricalPower = 0; 
-
-bool bUserButtonPressed = false;
 
 WiFiClient   espClient;
 
 PubSubClient MqttClient(espClient);
-
-long previousConnectTryMillis = 0;
-
 WebServer httpServer(80);
 
 ESPHTTPUpdateServer httpUpdater;
@@ -106,8 +98,19 @@ String mqttpwd        = "";
 
 uint16_t u16MqttUpdateTimeout = 0xFFFF;
 bool     bMqttTimeout = true;
+long     previousConnectTryMillis = 0;
+int32_t  i32ElectricalPower = 0;
+byte     btnPressed = 0;
+const char* update_path    = "/firmware";
+
+
+bool bUserButtonPressed = false;
 
 #include "images.h"
+
+void   StartTrigger(void);
+void   ResetTriggerOutputs(void);
+String getId();
 
 // -------------------------------------------------------
 // Check the WiFi status and reconnect if necessary
@@ -212,7 +215,7 @@ String load_from_file(const char* file_name, String defaultvalue)
 {
     String result = "";
 
-    this_file = LITTLEFS.open(file_name, "r");
+    this_file = LittleFS.open(file_name, "r");
     if (!this_file) { // failed to open the file, return defaultvalue
         return defaultvalue;
     }
@@ -226,7 +229,7 @@ String load_from_file(const char* file_name, String defaultvalue)
 }
 
 bool write_to_file(const char* file_name, String contents) {
-    File this_file = LITTLEFS.open(file_name, "w");
+    File this_file = LittleFS.open(file_name, "w");
     if (!this_file) { // failed to open the file, return false
         return false;
     }
@@ -501,7 +504,7 @@ void setup()
     Serial.println(F("Setup()"));
     WEB_DEBUG_PRINT("Setup()");
 
-    LITTLEFS.begin(FORMAT_LITTLEFS_IF_FAILED);
+    LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED);
 
     MqttClient.setCallback(MqttSubCallback);
   
@@ -677,5 +680,5 @@ void loop()
     }
 
 
-    httpServer.handleClient();    
+    httpServer.handleClient();
 }
