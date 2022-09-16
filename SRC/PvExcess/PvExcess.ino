@@ -34,11 +34,36 @@ or download them from github (Sketch -> Include Library -> Add .ZIP Library)
 #define BUTTON_TOP     35 // Active Low; Located next to the reset button
 #define BUTTON_BOTTOM  0  // Active Low; Also used as GPIO0
 
-#define TFT_MOSI       19
-#define TFT_SCLK       18
-#define TFT_CS         5
-#define TFT_DC         16
-#define TFT_BL         4 // Backlight
+
+// SPI issue #1 (SPI speed)
+// ------------------------
+// The SPI clock is way to fast (26 MHz) and looks very ugly. It clocks between 1 and 3.3V and does not return back to 0 V.
+// The ST7789V datasheet claims a "Serial clock cycle" of 66 ns (15,2 MHz)
+// If we call "TftSpi.beginTransaction(SPISettings(15000000, MSBFIRST, SPI_MODE0));" the SPI stops sending clocks. Why?
+// I even tried to write the ESP32 register directly. But it doesn't change the SPI speed at all.
+uint32_t* VSPI_CLOCK_REG = (uint32_t*)0x3FF65018; // Pointer to ESP32 SPI clock register
+
+// SPI issue #2 (MISO/MOSI)
+// ------------------------
+// The TTGO pinout says, that GPIO 19 is MOSI. But GPIO 19 shall be MISO regarding to the documentation.
+// I have no clue why this is even working. We are using hardware SPI here.
+// So how can this work with swapped MISO/MOSI Pins???
+
+// ST7789V SPI
+// ---------------------------------------------------------------------
+// CS actvie LOW --> Idle Hi
+// CLK Idle = LOW --> CPOL = 0
+// Data changed on falling clock edge --> sampled on rising clock edge
+// First bit sampled on first edge after CS --> CPHA = 0
+// CPOL = 0 and CPHA = 0 --> SPI Mode 0
+// Data is transmitted MSB first
+
+#define TFT_MOSI       19 // SPI master out slave in (VSPID   Pin on ESP32; V for SPI #3; DSA Pin on ST7789V)
+#define TFT_SCLK       18 // SPI clock               (VSPICLK Pin on ESP32; V for SPI #3; DCX Pin on ST7789V)
+#define TFT_CS         5  // SPI chip select         (VSPICS  Pin on ESP32; V for SPI #3; CSX Pin on ST7789V)
+#define TFT_DC         16 // Data/Command
+#define TFT_RST        23 // Reset
+#define TFT_BL         4  // Backlight
 
 #define BG_COLOR       ST77XX_BLACK
 
@@ -72,7 +97,13 @@ WiFiClient          espClient;
 PubSubClient        MqttClient(espClient);
 WebServer           httpServer(80);
 ESPHTTPUpdateServer httpUpdater;
-Adafruit_ST7789     tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK); // ST7789 240x135
+
+// Enable for software SPI. This is really slow
+//Adafruit_ST7789     tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK); // ST7789 240x135
+
+SPIClass TftSpi(VSPI); // TFT SPI on VSPI (SPI #3)
+Adafruit_ST7789 tft = Adafruit_ST7789(&TftSpi, TFT_CS, TFT_DC, TFT_RST); // ST7789 240x135
+
 WiFiManager         wm;
 
 WiFiManagerParameter* custom_mqtt_server     = NULL;
@@ -505,6 +536,12 @@ void setup()
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, HIGH);
 
+    // Here again. I entered two times TFT_MOSI. Why is this even working???
+    TftSpi.begin(TFT_SCLK, TFT_MOSI, TFT_MOSI, TFT_CS);
+
+    // If we call this line to reduce the SPI speed, the SPI will stop sending clocks. Why?
+    // TftSpi.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+
     tft.init(135, 240); // Init ST7789 240x135
     tft.setRotation(3);
     tft.fillScreen(BG_COLOR);
@@ -634,7 +671,7 @@ void loop()
       if( u16MqttUpdateTimeout > MQTT_TIMEOUT_THRESHOLD )
       {
         i32ElectricalPower = 0;
-        bMqttTimeout = true;  
+        bMqttTimeout = true;
       }
       else
       {
