@@ -177,6 +177,9 @@ void WiFi_Reconnect()
         Serial.print("Hostname: ");
         Serial.println(HOSTNAME);
 
+        TftPrintStatus("", String("IP: ") + String(WiFi.localIP().toString()));
+        delay(1500);
+
         WEB_DEBUG_PRINT("WiFi reconnected")
     }
 }
@@ -393,7 +396,7 @@ void DrawStartLogic(int32_t Power)
       if( (WiFi.status() != WL_CONNECTED) )
       {
         u16StartTimer = START_APPLIANCES_TIME; // Reset start timer
-        TftPrintStatus("Wifi not connected", "");
+        TftPrintStatus("", "Wifi not connected");
       }
       else
       {
@@ -403,7 +406,7 @@ void DrawStartLogic(int32_t Power)
       
     case PVE_STATE_NO_MQTT:
       if( !MqttClient.connected() )
-        TftPrintStatus("MQTT not connected", "");
+        TftPrintStatus("", "MQTT not connected");
       else
         PveState = PVE_STATE_WAIT_FOR_USER;
       break;
@@ -541,19 +544,9 @@ void setup()
     {
         //if you get here you have connected to the WiFi
         Serial.println(F("connected...yeey :)"));
+        TftPrintStatus("", String("IP: ") + String(WiFi.localIP().toString()));
+        delay(1500);
     }
-
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        WiFi_Reconnect();
-    }
-
-    Serial.print(F("MqttServer: "));     Serial.println(SettingsJson["server"]);
-    Serial.print(F("MqttUser: "));       Serial.println(SettingsJson["user"]);
-    //Serial.print(F("MqttPass: "));     Serial.println(SettingsJson["pass"]);
-    Serial.print(F("MqttPort: "));       Serial.println(SettingsJson["port"]);
-    Serial.print(F("MqttTopic: "));      Serial.println(SettingsJson["topic"]);
-    Serial.print(F("MqttJsonKey: "));    Serial.println(SettingsJson["key"]);
 
     MqttClient.setServer(SettingsJson["server"], atoi(SettingsJson["port"]));
  
@@ -584,7 +577,8 @@ void MainPage(void)
 void ConfigPage(void)
 {
     String sJsonTxData =  "<script> var CurrentValues = '" + String(sSettings) + "'; </script>";
-    Serial.println(sJsonTxData);
+    Serial.print("Current settings: ");
+    Serial.println(sSettings);
     httpServer.send(200, "text/html", sJsonTxData+ String(sConfigPage));
 }
 
@@ -592,12 +586,9 @@ void SaveConfigData(void)
 {
   JSONVar doc;
 
-  doc["server"] = httpServer.arg("server");
-  doc["port"]   = httpServer.arg("port");
-  doc["user"]   = httpServer.arg("user");
-  doc["pass"]   = httpServer.arg("pass");
-  doc["topic"]  = httpServer.arg("topic");
-  doc["key"]    = httpServer.arg("key");
+  for(int i=0; i<httpServer.args(); i++ )
+    doc[httpServer.argName(i)] = httpServer.arg(i);
+
   String jsonString = JSON.stringify(doc);
   Serial.println(jsonString);
 
