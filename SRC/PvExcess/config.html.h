@@ -2,7 +2,7 @@ const char sConfigPage[] PROGMEM = R"=====(
 <!DOCTYPE html>
 <html>
 
-<body onload="LoadInputFields()">
+<body onload="OnLoad()">
 
   <h2>Config PvExcess</h2>
 
@@ -38,17 +38,20 @@ const char sConfigPage[] PROGMEM = R"=====(
 
 <script>
 
-  function LoadInputFields()
+  
+  function OnLoad()
   {
     const obj = JSON.parse(CurrentValues);
     
-    document.getElementById('server').value = obj.server;
-    document.getElementById('port').value   = obj.port;
-    document.getElementById('user').value   = obj.user;
-    document.getElementById('pass').value   = obj.pass;
-    document.getElementById('topic').value  = obj.topic;
-    document.getElementById('key').value    = obj.key;
-  
+    inputs = document.getElementsByTagName('input'); // Get no of input fielfs
+    len = inputs.length - 1; // The subbmit button is also an input --> - 1
+
+    var i = 0;
+    for( const x in obj)
+    {
+      inputs[i].value = obj[x];
+      i++;
+    }
   }
 
   </script>
