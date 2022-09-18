@@ -4,7 +4,7 @@
 Used Libs
   - WiFiManager           by tzapu           https://github.com/tzapu/WiFiManager
   - PubSubClient          by Nick O´Leary    https://github.com/knolleary/pubsubclient
-  - ArduinoJson           by Benoit Blanchon https://github.com/bblanchon/ArduinoJson
+  - Arduino_Json          by Arduino         http://github.com/arduino-libraries/Arduino_JSON
   - ESPHTTPUpdateServerby by Tobias Faust    https://github.com/tobiasfaust/ESPHTTPUpdateServer
   - LITTLEFS              by lorol           https://github.com/lorol/LITTLEFS
   - Adafruit_GFX          by Adafruit        https://github.com/adafruit/Adafruit-GFX-Library
@@ -25,10 +25,12 @@ or download them from github (Sketch -> Include Library -> Add .ZIP Library)
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <ESPHTTPUpdateServer.h>
 #include <SPI.h>
+#include <Arduino_Json.h>
 
 #include "LittleFS.h"
 #include "config.h"
-#include "index.h"
+#include "config.html.h"
+#include "index.html.h"
 #include "images.h"
 
 #define BUTTON_TOP     35 // Active Low; Located next to the reset button
@@ -106,26 +108,10 @@ Adafruit_ST7789 tft = Adafruit_ST7789(&TftSpi, TFT_CS, TFT_DC, TFT_RST); // ST77
 
 WiFiManager         wm;
 
-WiFiManagerParameter* custom_mqtt_server     = NULL;
-WiFiManagerParameter* custom_mqtt_port       = NULL;
-WiFiManagerParameter* custom_mqtt_topic      = NULL;
-WiFiManagerParameter* custom_mqtt_json_entry = NULL;
-WiFiManagerParameter* custom_mqtt_user       = NULL;
-WiFiManagerParameter* custom_mqtt_pwd        = NULL;
+String sSettings;
+JSONVar SettingsJson;
 
-const static char* serverfile    = "/mqtts";
-const static char* portfile      = "/mqttp";
-const static char* topicfile     = "/mqttt";
-const static char* josnentryfile = "/mqttj";
-const static char* userfile      = "/mqttu";
-const static char* secretfile    = "/mqttw";
-
-String mqttserver     = "";
-String mqttport       = "";
-String mqtttopic      = "";
-String mqttjsonentry  = "";
-String mqttuser       = "";
-String mqttpwd        = "";
+const static char* settingsfile    = "/settings";
 
 uint16_t     u16MqttUpdateTimeout     = 0xFFFF;
 int32_t      i32ElectricalPower       = 0;
@@ -150,7 +136,7 @@ void   MainPage(void);
 void   StartTrigger(void);
 bool   MqttReconnect(void);
 void   WiFi_Reconnect(void);
-void   saveParamCallback(void);
+//void   saveParamCallback(void);
 void   DrawPower(int32_t Power);
 void   ResetTriggerOutputs(void);
 void   DrawStartLogic(int32_t Power);
@@ -205,11 +191,12 @@ void MqttSubCallback(char* topic, byte* payload, unsigned int length)
 
   Obj = JSON.parse((const char*)payload);
 
-  if (Obj.hasOwnProperty(mqttjsonentry.c_str())) 
+  if (Obj.hasOwnProperty(SettingsJson["key"]))
   {
     u16MqttUpdateTimeout = 0;
-    Serial.print(mqttjsonentry + ": ");
-    i32ElectricalPower = Obj[mqttjsonentry.c_str()];
+    Serial.print(SettingsJson["key"]);
+    Serial.print(": ");
+    i32ElectricalPower = Obj[SettingsJson["key"]];
     Serial.println(i32ElectricalPower);
   }
   
@@ -220,7 +207,7 @@ void MqttSubCallback(char* topic, byte* payload, unsigned int length)
 // -------------------------------------------------------
 bool MqttReconnect()
 {
-    if (mqttserver.length() == 0)
+    if (SettingsJson["server"].length() == 0)
     {
         //No server configured
         return false;
@@ -234,23 +221,17 @@ bool MqttReconnect()
 
     if (millis() - previousConnectTryMillis >= (5000))
     {
-
-        Serial.print("MqttServer: ");      Serial.println(mqttserver);
-        Serial.print("MqttUser: ");        Serial.println(mqttuser);
-        Serial.print("MqttTopic: ");       Serial.println(mqtttopic);
-        Serial.print("Mqtt Json Entry: "); Serial.println(mqttjsonentry);
         Serial.print("Attempting MQTT connection...");
-
 
         //Run only once every 5 seconds
         previousConnectTryMillis = millis();
         // Attempt to connect
-        if (MqttClient.connect(getId().c_str(), mqttuser.c_str(), mqttpwd.c_str()) )
+        if( MqttClient.connect(getId().c_str(), (const char*)SettingsJson["user"], (const char*)SettingsJson["pass"]) )
         {
             Serial.println("connected");
 
             // subscribe topic and callback which is called when /hello has come
-            MqttClient.subscribe(mqtttopic.c_str());
+            MqttClient.subscribe(SettingsJson["topic"]);
             
             return true;
         }
@@ -301,33 +282,6 @@ bool write_to_file(const char* file_name, String contents) {
     return true;
 }
 
-void saveParamCallback()
-{
-    Serial.println("[CALLBACK] saveParamCallback fired");
-    mqttserver = custom_mqtt_server->getValue();
-    write_to_file(serverfile, mqttserver);
-
-    mqttport = custom_mqtt_port->getValue();
-    write_to_file(portfile, mqttport);
-
-    mqtttopic = custom_mqtt_topic->getValue();
-    write_to_file(topicfile, mqtttopic);
-
-    mqttjsonentry = custom_mqtt_json_entry->getValue();
-    write_to_file(josnentryfile, mqttjsonentry);
-
-    mqttuser = custom_mqtt_user->getValue();
-    write_to_file(userfile, mqttuser);
-
-    mqttpwd = custom_mqtt_pwd->getValue();
-    write_to_file(secretfile, mqttpwd);
-
-    if (StartedConfigAfterBoot)
-    {
-        ESP.restart();
-    }
-}
-
 String getId()
 {
     uint64_t id = ESP.getEfuseMac();
@@ -353,6 +307,7 @@ void ConvertPowerToHumanReadable(int32_t i32Power, char *Str)
     sprintf(Str, "%i W", i32Power);
 }
 
+// add leading ' ' (space) to a string
 void ExtendString(String *Str, uint8_t n)
 {
   uint8_t u8Len = Str->length();
@@ -556,35 +511,18 @@ void setup()
 
     MqttClient.setCallback(MqttSubCallback);
   
-    mqttserver     = load_from_file(serverfile,    "192.168.0.82");
-    mqttport       = load_from_file(portfile,      "1883");
-    mqtttopic      = load_from_file(topicfile,     "energy/solar");
-    mqttjsonentry  = load_from_file(josnentryfile, "ElectricalPower");
-    mqttuser       = load_from_file(userfile,      "");
-    mqttpwd        = load_from_file(secretfile,    "");
+    sSettings = load_from_file(settingsfile,  DEFAULT_SETTINGS);
+    SettingsJson = JSON.parse(sSettings);
+
+    Serial.println("Current settings:");
+    Serial.println(sSettings);
 
     WiFi.setHostname(HOSTNAME);
     WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
 
- 
     // make sure the packet size is set correctly in the library
     MqttClient.setBufferSize(MQTT_MAX_PACKET_SIZE);
-    
-    custom_mqtt_server      = new WiFiManagerParameter("server",    "mqtt server",     mqttserver.c_str(),    40);
-    custom_mqtt_port        = new WiFiManagerParameter("port",      "mqtt port",       mqttport.c_str(),      6);
-    custom_mqtt_topic       = new WiFiManagerParameter("topic",     "mqtt topic",      mqtttopic.c_str(),     64);
-    custom_mqtt_json_entry  = new WiFiManagerParameter("json_entry","mqtt json entry", mqttjsonentry.c_str(), 32);
-    custom_mqtt_user        = new WiFiManagerParameter("username",  "mqtt username",   mqttuser.c_str(),      40);
-    custom_mqtt_pwd         = new WiFiManagerParameter("password",  "mqtt password",   mqttpwd.c_str(),       40);
-    
-    wm.addParameter(custom_mqtt_server);
-    wm.addParameter(custom_mqtt_port);
-    wm.addParameter(custom_mqtt_topic);
-    wm.addParameter(custom_mqtt_json_entry);
-    wm.addParameter(custom_mqtt_user);
-    wm.addParameter(custom_mqtt_pwd);
-    wm.setSaveParamsCallback(saveParamCallback);
-    
+
     std::vector<const char*> menu = { "wifi","wifinoscan","param","sep","erase","restart" };
     wm.setMenu(menu); // custom menu, pass vector
 
@@ -610,17 +548,19 @@ void setup()
         WiFi_Reconnect();
     }
 
+    Serial.print(F("MqttServer: "));     Serial.println(SettingsJson["server"]);
+    Serial.print(F("MqttUser: "));       Serial.println(SettingsJson["user"]);
+    //Serial.print(F("MqttPass: "));     Serial.println(SettingsJson["pass"]);
+    Serial.print(F("MqttPort: "));       Serial.println(SettingsJson["port"]);
+    Serial.print(F("MqttTopic: "));      Serial.println(SettingsJson["topic"]);
+    Serial.print(F("MqttJsonKey: "));    Serial.println(SettingsJson["key"]);
 
-    uint16_t port = mqttport.toInt();
-    if (port == 0)
-        port = 1883;
-    Serial.print(F("MqttServer: "));     Serial.println(mqttserver);
-    Serial.print(F("MqttPort: "));       Serial.println(port);
-    Serial.print(F("MqttTopic: "));      Serial.println(mqtttopic);
-    Serial.print(F("MqttJsonEntry: "));  Serial.println(mqttjsonentry);
-    MqttClient.setServer(mqttserver.c_str(), port);
+    MqttClient.setServer(SettingsJson["server"], atoi(SettingsJson["port"]));
  
     httpServer.on("/", MainPage);
+    httpServer.on("/config", ConfigPage);
+    httpServer.on("/save_new_config_data", SaveConfigData);
+    
     #if ENABLE_WEB_DEBUG == 1
         httpServer.on("/debug", SendDebug);
     #endif
@@ -638,7 +578,34 @@ void SendDebug(void)
 
 void MainPage(void)
 {
-    httpServer.send(200, "text/html", MAIN_page);
+    httpServer.send(200, "text/html", sMainPage);
+}
+
+void ConfigPage(void)
+{
+    String sJsonTxData =  "<script> var CurrentValues = '" + String(sSettings) + "'; </script>";
+    Serial.println(sJsonTxData);
+    httpServer.send(200, "text/html", sJsonTxData+ String(sConfigPage));
+}
+
+void SaveConfigData(void)
+{
+  JSONVar doc;
+
+  doc["server"] = httpServer.arg("server");
+  doc["port"]   = httpServer.arg("port");
+  doc["user"]   = httpServer.arg("user");
+  doc["pass"]   = httpServer.arg("pass");
+  doc["topic"]  = httpServer.arg("topic");
+  doc["key"]    = httpServer.arg("key");
+  String jsonString = JSON.stringify(doc);
+  Serial.println(jsonString);
+
+  write_to_file(settingsfile, jsonString);
+
+  httpServer.send(200, "text/plain", "Data saved. Restarting device ....");
+  delay(1000);
+  ESP.restart();
 }
 
 // -------------------------------------------------------
@@ -688,7 +655,6 @@ void loop()
         {
             if (u8BtnPressCnt > 5)
             {
-    
                 Serial.println("Start AP");
                 StartedConfigAfterBoot = true;
             }
@@ -717,12 +683,8 @@ void loop()
 
     WiFi_Reconnect();
 
-
     if (MqttReconnect())
-    {
         MqttClient.loop();
-    }
-
 
     httpServer.handleClient();
 }
