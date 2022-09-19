@@ -21,6 +21,3 @@
 
 #define PERMANENT_OUTPUT 21          // This output will stay high permanent after the threshold power is reached
 #define TRIGGER_OUTPUT   22          // This output will be high for 500 ms after the threshold power is reached
-
-#define EXCESS_POWER_TO_START 1100   // Power in W needed by the device
-#define START_APPLIANCES_TIME (5*60) // Start after this time with at least EXCESS_POWER_TO_START from your PC installation
