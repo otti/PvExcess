@@ -383,7 +383,6 @@ void DrawStartLogic(int32_t Power)
 
   ConvertSecondsToHumanReadable(u16StartTimer, sTimer);
   ConvertPowerToHumanReadable(atoi(SettingsJson["power"]), sPower);
-  ConvertPowerToHumanReadable(-1500, sPower);
 
   if( ((WiFi.status() != WL_CONNECTED) || (!MqttClient.connected())) && (PveState != PVE_STATE_NO_WIFI) && (PveState != PVE_STATE_NO_MQTT) )
     PveState = PVE_STATE_INIT;
