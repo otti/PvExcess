@@ -84,6 +84,7 @@ uint16_t u16WebMsgNo = 0;
 #define WEB_DEBUG_PRINT(s) ;
 #endif
 
+#define DEFAULT_SETTINGS "{\"server\": \"192.168.0.82\", \"port\": \"1883\", \"user\": \"\", \"pass\": \"\", \"topic\": \"LS111/Metering\", \"key\": \"ElectricalPower\", \"power\" : \"2000\", \"time\": \"300\"}"
 typedef enum
 {
   PVE_STATE_INIT,
@@ -122,7 +123,7 @@ bool         StartedConfigAfterBoot   = false;
 bool         bUserButtonPressed       = false;
 const char*  update_path              = "/firmware";
 
-uint16_t     u16StartTimer            = START_APPLIANCES_TIME;
+uint16_t     u16StartTimer            = 300;
 long         ButtonTimer              = 0;
 long         _1sTimer                 = 0;
 bool         bUserButtonOld           = false;
@@ -381,7 +382,7 @@ void DrawStartLogic(int32_t Power)
   Power = Power * (-1); // Excess power is now positive
 
   ConvertSecondsToHumanReadable(u16StartTimer, sTimer);
-  ConvertPowerToHumanReadable(EXCESS_POWER_TO_START, sPower);
+  ConvertPowerToHumanReadable(atoi(SettingsJson["power"]), sPower);
 
   if( ((WiFi.status() != WL_CONNECTED) || (!MqttClient.connected())) && (PveState != PVE_STATE_NO_WIFI) && (PveState != PVE_STATE_NO_MQTT) )
     PveState = PVE_STATE_INIT;
@@ -395,7 +396,7 @@ void DrawStartLogic(int32_t Power)
     case PVE_STATE_NO_WIFI:
       if( (WiFi.status() != WL_CONNECTED) )
       {
-        u16StartTimer = START_APPLIANCES_TIME; // Reset start timer
+        u16StartTimer =  atoi(SettingsJson["time"]); // Reset start timer
         TftPrintStatus("", "Wifi not connected");
       }
       else
@@ -422,9 +423,9 @@ void DrawStartLogic(int32_t Power)
       
     case PVE_STATE_WAIT_FOR_EXCESS_POWER:
       ResetTriggerOutputs();
-      if( Power < EXCESS_POWER_TO_START )
+      if( Power < atoi(SettingsJson["power"]) )
       {
-        u16StartTimer = START_APPLIANCES_TIME; // Not enough power, reset start timer
+        u16StartTimer =  atoi(SettingsJson["time"]); // Not enough power, reset start timer
         TftPrintStatus("Not enough power", String(sPower) + " needed!");
       }
       else
@@ -436,9 +437,9 @@ void DrawStartLogic(int32_t Power)
 
             // Excess power dropped below the threshold
       // Go one step back and wait for the sun to come out :-)
-      if( Power < EXCESS_POWER_TO_START )
+      if( Power < atoi(SettingsJson["power"]) )
       {
-        u16StartTimer = START_APPLIANCES_TIME; // Reset start timer
+        u16StartTimer =  atoi(SettingsJson["time"]); // Reset start timer
         PveState = PVE_STATE_WAIT_FOR_EXCESS_POWER;
       }
       else
@@ -448,7 +449,7 @@ void DrawStartLogic(int32_t Power)
         else
         {
           StartTrigger();
-          u16StartTimer = START_APPLIANCES_TIME; // Reset start timer
+          u16StartTimer =  atoi(SettingsJson["time"]); // Reset start timer
           PveState = PVE_STATE_RUNNING;
         }
       }
